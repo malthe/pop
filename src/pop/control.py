@@ -20,6 +20,7 @@ def configure_init_parser(subparsers):
 
     sub_parser.add_argument(
         "--admin-identity",
+        metavar="<username:password>",
         default="admin:admin",
         help="Admin access control identity for zookeeper ACLs"
         )
