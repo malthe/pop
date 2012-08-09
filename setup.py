@@ -8,6 +8,7 @@ version = '1.0-dev'
 
 install_requires = [
     'setuptools',
+    'twisted',
     'txzookeeper >= 0.9.6',
     ]
 
@@ -27,7 +28,7 @@ setup(name="pop",
       author="Malthe Borch",
       author_email="mborch@gmail.com",
       url="http://www.github.com/malthe/pop",
-      license="GPL3",
+      license="GPL",
       namespace_packages=[],
       packages = find_packages('src'),
       package_dir = {'':'src'},
@@ -35,7 +36,7 @@ setup(name="pop",
       zip_safe=False,
       entry_points = """
       [console_scripts]
-      pop-status = pop.scripts:status
+      pop = pop.control:main
       """,
       install_requires=install_requires,
       tests_require=install_requires + [

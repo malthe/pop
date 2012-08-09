@@ -1,5 +1,7 @@
 Let *pop* run your services!
 
+Skip to `acknowledgements and credits`_.
+
 Motivation
 ==========
 
@@ -50,6 +52,83 @@ With these principles we try to cover the basic design and philosophy.
 #. *Integrated*. This is a Python-based tool for running Python-based
    services. The system is extensible through plugins.
 
+#. *Open*. The system should not be tied to a particular platform.
+
+
+Installation
+============
+
+These steps will be necessary for each machine in the system – except
+for the final step which applies only to the machine that should run
+ZooKeeper.
+
+We assume that Python 2.7 is installed and available as ``python2``.
+
+#. To get started, log in to a machine, and install *pop* using
+   `setuptools <http://pypi.python.org/pypi/setuptools>`_ and
+   `virtualenv <http://www.virtualenv.org/>`_::
+
+     $ wget http://peak.telecommunity.com/dist/ez_setup.py
+     $ sudo python2 ez_setup.py
+     $ sudo easy_install-2.7 virtualenv
+
+   That's it for ``sudo``. We can continue with an unprivileged user.
+
+   Let's install *pop* into an isolated, virtual environment under the
+   home directory and enter the environment::
+
+     $ virtualenv --python=python2 ~/pop
+     $ source ~/pop/bin/activate
+     $ easy_install pop
+
+   This installs the ``pop`` command-line utility as well as
+   supporting libraries.
+
+#. Build and install ZooKeeper on the system (see `instructions
+   <http://zookeeper.apache.org/doc/trunk/zookeeperStarted.html>`_ for
+   more details).
+
+   Make sure your system has `Apache Ant <http://ant.apache.org/>`_
+   installed (a build tool for `Java <http://openjdk.java.net/>`_)
+   before proceeding::
+
+      $ cd ~/pop
+      $ git clone git://git.apache.org/zookeeper.git
+      $ cd zookeeper
+      $ ant
+
+   First we need to build the C-bindings::
+
+      $ cd src/c
+      $ autoreconf -if
+      $ ./configure --prefix=~/pop/zookeeper
+      $ make && make install
+
+   Then the Python-bindings::
+
+      $ cd ../contrib/zkpython
+      $ ant install
+
+   That's it for the installation.
+
+#. Configure and start ZooKeeper::
+
+      $ cd ~/pop/zookeeper/conf
+      $ cp zoo_sample.cfg zoo.cfg
+
+   You should edit ``zoo.cfg`` before you start a real deployment
+   because the default storage setting is ``/tmp/zookeeper``.
+
+   There's a script included to run the service::
+
+      $ ../bin/zkServer.sh start
+
+   If you want to keep track of what's going on, use
+   ``start-foreground``. Note that the ``pop`` utility expects
+   ZooKeeper to run on ``localhost`` unless the ``--host`` argument is
+   provided.
+
+   If everything's gone to plan, we're ready to use the system.
 
 Tutorial
 ========
@@ -57,27 +136,14 @@ Tutorial
 As a first look, in this tutorial we'll learn how to use *pop* to run
 a vanilla installation of `Plone <http://www.plone.org>`_.
 
-#. To get started, log in to the target system, and install *pop*
-   using `setuptools <http://pypi.python.org/pypi/setuptools>`_::
+#. Initialize *pop* namespace::
 
-     $ wget http://peak.telecommunity.com/dist/ez_setup.py
-     $ sudo python2 ez_setup.py
-     $ sudo easy_install-2.7 pop
+     $ pop init
 
-   This installs the ``pop`` command-line utility as well as
-   supporting libraries.
-
-#. Build and install ZooKeeper on the system.
-
-   The ``pop`` utility expects ZooKeeper to run on ``localhost``
-   unless the ``--host`` argument is provided.
-
-#. Bootstrap *pop* into ZooKeeper::
-
-     $ pop bootstrap
-
-   This adds a number of nodes to the ZooKeeper namespace that *pop*
-   requires for its operation.
+   This adds a number of nodes to the hierarchy that *pop* requires
+   for its operation. Note that the command effectively resets the
+   configuration although this requires the ``--force`` option if
+   an existing configuration is in place.
 
 #. Add the Plone service using the included template::
 
@@ -119,9 +185,9 @@ State
 
 Below is a description of the different kinds of state objects in use:
 
-#. *Systems*.
+#. *Machines*.
 
-   This is a list of the available systems. When a machine agent
+   This is a list of the available machines. When a machine agent
    start, it adds an `ephemeral node
    <http://en.wiktionary.org/wiki/ephemeral>`_ to this list.
 
@@ -174,6 +240,24 @@ services that derive from this base class.
 
      $ pop run plone packages
 
+
+Acknowledgements and Credits
+============================
+
+The architecture and technical implementation of this software was
+inspired by Canonical's Juju cloud deployment tool, originally
+designed by Kapil Thangavelu. We deliberately use the same terms and
+conventions when possible (for example *machines* and *services*).
+
+The author of this software:
+
+  Malthe Borch – mborch@gmail.com
+
+
+License
+=======
+
+*Pop* is available under the GPL.
 
 
 ■
