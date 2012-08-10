@@ -1,12 +1,13 @@
-import os
 import sys
 import functools
 
 from StringIO import StringIO
 
-from twisted.internet.defer import inlineCallbacks, returnValue
-from twisted.internet import defer
-from twisted.internet import reactor
+from twisted.internet.defer import inlineCallbacks
+from twisted.internet.defer import returnValue
+
+from twisted.internet.defer import maybeDeferred
+
 from twisted.python.failure import Failure
 
 from txzookeeper.client import ZOO_OPEN_ACL_UNSAFE
@@ -19,33 +20,16 @@ from pop import log
 from pop.exceptions import StateException
 
 
-def zookeeper(func):
-    @inlineCallbacks
-    def connect_and_invoke(self, args):
-        client = self.client = ZookeeperClient(
-            "%s:%d" % (args.host, args.port),
-            session_timeout=1000
-            )
+def run(options):
+    from twisted.internet import reactor
 
-        log.debug("connecting to zookeeper...")
-        yield client.connect()
-
-        result = yield inlineCallbacks(func)(self, args)
-        yield client.close()
-        log.debug("connection closed.")
-
-        returnValue(result)
-
-    def run(func, args):
-        d = defer.maybeDeferred(connect_and_invoke, func, args)
+    def wrapper():
+        d = maybeDeferred(options.func, options)
 
         @d.addBoth
-        def handle_exit(result, stream=sys.stderr):
-            if reactor.running:
-                reactor.stop()
-
+        def handle_exit(result, stream=sys.stderr, reactor=reactor):
             if isinstance(result, Failure):
-                if args.verbose > 1:
+                if options.verbose > 1:
                     tracebackIO = StringIO()
                     result.printTraceback(file=tracebackIO)
                     log.warn(tracebackIO.getvalue())
@@ -58,20 +42,49 @@ def zookeeper(func):
                         line = "error - %s" % line
 
                     log.error(line)
+            else:
+                name = options.func.__name__.split('_', 1)[-1]
+                log.info("done - '%s' completed OK.\n" % name)
 
-                os._exit(1)
-
-            name = args.func.__name__.split('_', 1)[-1]
-            log.info("done - '%s' completed OK.\n" % name)
+            if reactor.running:
+                reactor.stop()
 
         return d
 
+    reactor.callWhenRunning(wrapper)
+    reactor.run()
+
+
+def constructor(func):
+    """Decorator that wraps a command action in a class constructor."""
+
     @functools.wraps(func)
-    def decorator(*args):
-        reactor.callWhenRunning(run, *args)
-        reactor.run()
+    def decorator(factory, options):
+        command = factory(options)
+        return maybeDeferred(func, command)
+
+    return classmethod(decorator)
+
+
+def connected(func):
+    @inlineCallbacks
+    @functools.wraps(func)
+    def decorator(command, *args):
+        log.debug("connecting to zookeeper...")
+        yield command.client.connect()
+        log.debug("connected.")
+        result = yield func(command, *args)
+        try:
+            returnValue(result)
+        finally:
+            yield command.client.close()
+            log.debug("connection closed.")
 
     return decorator
+
+
+def twisted(func):
+    return constructor(connected(inlineCallbacks(func)))
 
 
 class Command(object):
@@ -79,13 +92,36 @@ class Command(object):
     permissions = PERM_ALL
 
     client = None
+    path = None
 
-    @zookeeper
-    def cmd_init(self, args):
-        yield self._initialize_hierarchy(
-            args.admin_identity,
-            args.force
+    def __init__(self, options):
+        self.options = options
+        self.client = self.get_client()
+
+    def get_client(self):
+        """Return ZooKeeper client."""
+
+        return ZookeeperClient(
+            "%s:%d" % (self.options.host, self.options.port),
+            session_timeout=1000
             )
+
+    @property
+    def path(self):
+        """Return path prefix."""
+
+        return self.options.path_prefix
+
+    @twisted
+    def cmd_init(self):
+        yield self._initialize_hierarchy(
+            self.options.admin_identity,
+            self.options.force
+            )
+
+    @twisted
+    def cmd_purge(self):
+        yield self.client.delete(self.path)
 
     @inlineCallbacks
     def _initialize_hierarchy(self, admin_identity, force):
@@ -97,11 +133,21 @@ class Command(object):
         create = self._create_or_delete if force else \
                  self._create_or_fail
 
+        # If the hierarchy root path is non-trivial, we create it
+        # immediately. Note that this is currently only imagined
+        # useful for automated testing.
+        if self.path != "/":
+            assert self.path.count("/") == 1
+            try:
+                yield self.client.create(self.path, acls=acls)
+            except NodeExistsException:
+                pass
+
         if force:
             log.warn("using '--force' to initialize hierarchy.")
 
-        yield create("/machines", acls)
-        yield create("/services", acls)
+        yield create(self.path + "machines", acls)
+        yield create(self.path + "services", acls)
 
     @inlineCallbacks
     def _create_or_delete(self, path, acls):

@@ -1,3 +1,4 @@
+import os
 import sys
 import logging
 import argparse
@@ -7,10 +8,13 @@ from zookeeper import set_log_stream
 
 from pop import log
 from pop.command import Command
+from pop.command import run
 
 LEVELS = (
     logging.DEBUG, logging.INFO
     )
+
+DESCRIPTION = "Automated build, deployment and service management tool."
 
 
 def configure_init_parser(subparsers):
@@ -28,9 +32,9 @@ def configure_init_parser(subparsers):
     return sub_parser
 
 
-def main(argv=sys.argv, quiet=False):
+def parse(args):
     parser = argparse.ArgumentParser(
-        description='Automated build, deployment and service management tool.',
+        description=DESCRIPTION,
         epilog="Have a nice day!",
         )
 
@@ -52,6 +56,12 @@ def main(argv=sys.argv, quiet=False):
         )
 
     parser.add_argument(
+        '--path-prefix', action='store', type=str,
+        help='zookeeper path prefix', metavar='PATH',
+        default="/",
+        )
+
+    parser.add_argument(
         '--verbose', '-v', action='count',
         help='increases output verbosity',
         default=0,
@@ -59,21 +69,25 @@ def main(argv=sys.argv, quiet=False):
 
     subparsers = parser.add_subparsers(
         title='command argument',
-        metavar='<command>\n',
+        metavar='<command>',
         )
 
     parsers = {}
 
     parsers['init'] = configure_init_parser(subparsers)
 
-    command = Command()
     for name, p in parsers.items():
-        p.set_defaults(func=getattr(command, "cmd_%s" % name))
+        p.set_defaults(func=getattr(Command, "cmd_%s" % name))
 
     # Parse arguments
-    args = parser.parse_args(argv[1:])
+    return parser.parse_args(args)
 
-    title = "%s - %s" % (parser.prog, parser.description.strip('.').lower())
+
+def main(argv=sys.argv, quiet=False):
+    args = parse(argv[1:])
+
+    prog = os.path.basename(argv[0])
+    title = "%s - %s" % (prog, DESCRIPTION.strip('.').lower())
     print(title + "\n" + "-" * len(title))
 
     # Set up logging
@@ -94,4 +108,4 @@ def main(argv=sys.argv, quiet=False):
     log.debug("%s system initialized." % package.egg_name().lower())
 
     # Invoke command
-    args.func(args)
+    run(args)
