@@ -8,12 +8,10 @@ from pop.exceptions import StateException
 from .common import TestCase
 
 def capture(test):
-
     @wraps(test)
     def decorator(self, *args):
         log = self.capture_logging(level=ERROR)
         return test(self, log, *args)
-
     return decorator
 
 
@@ -39,7 +37,8 @@ class ControlTestCase(TestCase):
     @inlineCallbacks
     def cmd(self, *args):
         args = self.parse(*args)
-        yield args.func(args)
+        result = yield args.func(args)
+        returnValue(result)
 
     def parse(self, *args):
         args = ('--path', self.path, ) + args
@@ -85,3 +84,11 @@ class InitializationTest(ControlTestCase):
         yield self.cmd("init")
         result = yield self.cmd("--force", "init")
         self.assertIs(result, None)
+
+
+class DumpTest(ControlTestCase):
+    @inlineCallbacks
+    def test_bare_invocation(self):
+        stream = self.capture_stream("stdout")
+        yield self.cmd("dump")
+        self.assertEquals(stream.getvalue(), '{}\n')

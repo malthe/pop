@@ -17,6 +17,21 @@ LEVELS = (
 DESCRIPTION = "Automated build, deployment and service management tool."
 
 
+def configure_dump_parser(subparsers):
+    sub_parser = subparsers.add_parser(
+        'dump', help='dump namespace',
+        )
+
+    sub_parser.add_argument(
+        "--format",
+        metavar="FORMAT",
+        default="yaml",
+        help="output format (default: '%(default)s')"
+        )
+
+    return sub_parser
+
+
 def configure_init_parser(subparsers):
     sub_parser = subparsers.add_parser(
         'init', help='initialize namespace',
@@ -26,7 +41,7 @@ def configure_init_parser(subparsers):
         "--admin-identity",
         metavar="<username:password>",
         default="admin:admin",
-        help="Admin access control identity for zookeeper ACLs"
+        help="admin access control identity for zookeeper ACLs"
         )
 
     return sub_parser
@@ -74,7 +89,13 @@ def parse(args):
 
     parsers = {}
 
-    parsers['init'] = configure_init_parser(subparsers)
+    for configure in (
+        configure_init_parser,
+        configure_dump_parser,
+        ):
+        p = configure(subparsers)
+        name = p.prog.split()[-1]
+        parsers[name] = p
 
     for name, p in parsers.items():
         p.set_defaults(func=getattr(Command, "cmd_%s" % name))
@@ -88,7 +109,7 @@ def main(argv=sys.argv, quiet=False):
 
     prog = os.path.basename(argv[0])
     title = "%s - %s" % (prog, DESCRIPTION.strip('.').lower())
-    print(title + "\n" + "-" * len(title))
+    sys.stderr.write(title + "\n" + "-" * len(title) + "\n")
 
     # Set up logging
     levels = tuple(reversed(LEVELS))

@@ -1,13 +1,12 @@
 import sys
 import functools
+import shutil
 
 from StringIO import StringIO
 
 from twisted.internet.defer import inlineCallbacks
 from twisted.internet.defer import returnValue
-
 from twisted.internet.defer import maybeDeferred
-
 from twisted.python.failure import Failure
 
 from txzookeeper.client import ZOO_OPEN_ACL_UNSAFE
@@ -18,6 +17,7 @@ from zookeeper import NodeExistsException
 
 from pop import log
 from pop.exceptions import StateException
+from pop.utils import YAMLState
 
 
 def run(options):
@@ -122,6 +122,16 @@ class Command(object):
     @twisted
     def cmd_purge(self):
         yield self.client.delete(self.path)
+
+    @twisted
+    def cmd_dump(self):
+        assert self.options.format == 'yaml'
+        state = YAMLState(self.client, self.path)
+        yield state.read()
+        stream = state.dump()
+        stream.seek(0)
+        shutil.copyfileobj(stream, sys.stdout)
+        log.info("state output to stdout (%d bytes)." % stream.tell())
 
     @inlineCallbacks
     def _initialize_hierarchy(self, admin_identity, force):

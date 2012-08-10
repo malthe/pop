@@ -10,6 +10,7 @@ install_requires = [
     'setuptools',
     'twisted',
     'txzookeeper >= 0.9.6',
+    'PyYAML>=3.9',
     ]
 
 if sys.version_info[:3] < (2,6,0):
