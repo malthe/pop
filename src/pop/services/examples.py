@@ -11,7 +11,6 @@ from pop import log
 @register
 class EchoService(PythonNetworkService):
     name = "echo"
-    description = "HTTP echo service"
 
     running = False
     stop = None
