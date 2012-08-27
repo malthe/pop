@@ -80,14 +80,17 @@ class CommandConfiguration(object):
         # service_parser.type = converter
 
         for name, factory in self.services.items():
-            if factory is None or factory.description is None:
+            if factory is None:
                 continue
 
-            p = service_parser.add_parser(
-                name, help=factory.description,
-                )
+            if factory.description is None:
+                p = argparse.ArgumentParser()
+            else:
+                p = service_parser.add_parser(
+                    name, help=factory.description,
+                    )
 
-            service_parser.choices[factory] = p
+            service_parser.choices[name] = p
 
         return sub_parser
 
