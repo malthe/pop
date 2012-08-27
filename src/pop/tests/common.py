@@ -3,6 +3,9 @@ import logging
 import StringIO
 
 from twisted.trial.unittest import TestCase as TrialTestCase
+from twisted.internet.defer import setDebugging
+
+setDebugging(True)
 
 
 class TestCase(TrialTestCase):

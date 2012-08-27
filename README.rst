@@ -145,20 +145,19 @@ a vanilla installation of `Plone <http://www.plone.org>`_.
    configuration although this requires the ``--force`` option if
    an existing configuration is in place.
 
-#. Add the Plone service using the included template::
+#. Add the ``plone4`` service which runs the latest version of Plone::
 
-     $ pop add plone --template plone4
+     $ pop add plone4
 
-   The ``plone4`` template configures the service to open up on port
-   8080 by default. To change this, pass an argument to the optional
-   ``--port`` parameter.
+   The service will be set up with the default configuration with the
+   name ``"plone4"`` (unless the ``--name`` argument was provided). We
+   can confirm this using the ``status`` command::
 
-   To get a list the available options for this template::
+     $ pop status plone4
 
-     $ pop describe plone4
-
-   The ``pop list`` command displays all available templates. These
-   are provided by the plugins that are installed in the system.
+   In the default configuration, Plone is set to listen on port
+   8080. To change this, use the ``--port`` parameter when you first
+   add the service.
 
 #. To make the local machine available as a system that we can run
    services on, we need to start the *machine agent*::
@@ -169,7 +168,7 @@ a vanilla installation of `Plone <http://www.plone.org>`_.
 
 #. Finally, to deploy the Plone service on the local machine::
 
-     $ pop deploy plone
+     $ pop deploy plone4
 
    This works because the utility assumes that we want to deploy the
    service on the local machine.

@@ -10,41 +10,43 @@ from twisted.internet.defer import maybeDeferred
 from twisted.python.failure import Failure
 
 from txzookeeper.client import ZOO_OPEN_ACL_UNSAFE
-from txzookeeper.client import ZookeeperClient
 
 from zookeeper import PERM_ALL
 from zookeeper import NodeExistsException
 
 from pop import log
-from pop.exceptions import StateException
 from pop.utils import YAMLState
+from pop.utils import local_machine_uuid
+from pop.exceptions import StateException
+from pop.exceptions import ServiceException
+from pop.machine import MachineAgent
 
 
-def run(options):
+def run(func, debug, options):
     from twisted.internet import reactor
 
     def wrapper():
-        d = maybeDeferred(options.func, options)
+        d = maybeDeferred(func, options)
 
         @d.addBoth
         def handle_exit(result, stream=sys.stderr, reactor=reactor):
             if isinstance(result, Failure):
-                if options.verbose > 1:
+                if debug:
                     tracebackIO = StringIO()
                     result.printTraceback(file=tracebackIO)
                     log.warn(tracebackIO.getvalue())
 
                 message = result.getErrorMessage()
                 for i, line in enumerate(message.split('\n')):
-                    line = line[0].lower() + line[1:]
+                    line = line[0:1].lower() + line[1:]
 
                     if i == 0:
-                        line = "error - %s" % line
+                        line = "error - %s." % line.rstrip('.')
 
                     log.error(line)
             else:
-                name = options.func.__name__.split('_', 1)[-1]
-                log.info("done - '%s' completed OK.\n" % name)
+                name = func.__name__.split('_', 1)[-1]
+                log.debug("done - '%s' completed OK.\n" % name)
 
             if reactor.running:
                 reactor.stop()
@@ -55,36 +57,22 @@ def run(options):
     reactor.run()
 
 
-def constructor(func):
-    """Decorator that wraps a command action in a class constructor."""
-
-    @functools.wraps(func)
-    def decorator(factory, options):
-        command = factory(options)
-        return maybeDeferred(func, command)
-
-    return classmethod(decorator)
-
-
 def connected(func):
     @inlineCallbacks
     @functools.wraps(func)
-    def decorator(command, *args):
+    def decorator(command, **kwargs):
         log.debug("connecting to zookeeper...")
         yield command.client.connect()
         log.debug("connected.")
-        result = yield func(command, *args)
-        try:
-            returnValue(result)
-        finally:
-            yield command.client.close()
-            log.debug("connection closed.")
-
+        result = yield func(command, **kwargs)
+        yield command.client.close()
+        returnValue(result)
+        log.debug("connection closed.")
     return decorator
 
 
 def twisted(func):
-    return constructor(connected(inlineCallbacks(func)))
+    return connected(inlineCallbacks(func))
 
 
 class Command(object):
@@ -94,85 +82,130 @@ class Command(object):
     client = None
     path = None
 
-    def __init__(self, options):
-        self.options = options
-        self.client = self.get_client()
+    def __init__(self, client, path, services, force=False):
+        assert path.endswith("/")
 
-    def get_client(self):
-        """Return ZooKeeper client."""
+        self.client = client
+        self.path = path
+        self.services = services
+        self.force = force
 
-        return ZookeeperClient(
-            "%s:%d" % (self.options.host, self.options.port),
-            session_timeout=1000
-            )
+    @inlineCallbacks
+    def get_service(self, name):
+        path = self.get_service_path(name)
+        factory_name, metadata = yield self.client.get(path + "/type")
+        factory = self.get_service_factory(factory_name)
+        service = factory(self.client, path)
+        returnValue(service)
 
-    @property
-    def path(self):
-        """Return path prefix."""
+    def get_service_path(self, name):
+        return self.path + "services/" + name
 
-        return self.options.path_prefix
-
-    @twisted
-    def cmd_init(self):
-        yield self._initialize_hierarchy(
-            self.options.admin_identity,
-            self.options.force
-            )
-
-    @twisted
-    def cmd_purge(self):
-        yield self.client.delete(self.path)
+    def get_service_factory(self, name):
+        try:
+            return self.services[name]
+        except KeyError:
+            raise KeyError(
+                "No such service type: %s." % name
+                )
 
     @twisted
-    def cmd_dump(self):
-        assert self.options.format == 'yaml'
-        state = YAMLState(self.client, self.path)
+    def cmd_add(self, name, factory_name):
+        if name is None:
+            log.info("using name: '%s'." % factory_name)
+            name = factory_name
+
+        path = self.get_service_path(name)
+        factory = self.get_service_factory(factory_name)
+        service = factory(self.client, path)
+        yield service.register()
+
+    @twisted
+    def cmd_fg(self):
+        uuid = local_machine_uuid()
+        agent = MachineAgent(self.client, self.path, uuid)
+        try:
+            yield agent.run()
+        except ServiceException as exc:
+            name = str(exc)
+            yield self.client.close()
+            yield self.cmd_start(name)
+
+    @twisted
+    def cmd_deploy(self, machine, name):
+        service = yield self.get_service(name)
+
+        if machine is None:
+            log.info("deploying to local machine.")
+            uuid = local_machine_uuid()
+            machine = str(uuid)
+
+        yield service.deploy(machine)
+        log.info("service deployment registered.")
+
+    @twisted
+    def cmd_dump(self, format):
+        assert format == 'yaml'
+        path = self.path if self.path == "/" else self.path[:-1]
+        state = YAMLState(self.client, path)
         yield state.read()
         stream = state.dump()
         stream.seek(0)
         shutil.copyfileobj(stream, sys.stdout)
         log.info("state output to stdout (%d bytes)." % stream.tell())
 
+    @twisted
+    def cmd_init(self, admin_identity):
+        yield self._initialize_hierarchy(admin_identity)
+
+    @twisted
+    def cmd_start(self, name):
+        service = yield self.get_service(name)
+        yield service.start()
+
+    @twisted
+    def cmd_status(self):
+        path = self.path + "services/" + self.options.name
+        t, metadata = yield self.client.get(path + "/type")
+        machines = yield self.client.get_children(path + "/machines")
+        sys.stdout.write("status:   %s\n" % self.options.name)
+        sys.stdout.write("type:     %s\n" % t)
+        if machines:
+            sys.stdout.write("machines: %s\n" % ", ".join(machines))
+        else:
+            sys.stdout.write("machines: -\n")
+
     @inlineCallbacks
-    def _initialize_hierarchy(self, admin_identity, force):
+    def _initialize_hierarchy(self, admin_identity):
         acls = [{"id": admin_identity,
                  "scheme": self.scheme,
                  "perms": self.permissions,
                  }, ZOO_OPEN_ACL_UNSAFE]
 
-        create = self._create_or_delete if force else \
-                 self._create_or_fail
+        create = self.client.create_or_clear if self.force else \
+                 self.client.create
 
         # If the hierarchy root path is non-trivial, we create it
         # immediately. Note that this is currently only imagined
         # useful for automated testing.
         if self.path != "/":
-            assert self.path.count("/") == 1
+            path = self.path.rstrip("/")
+            assert path.count("/") == 1
             try:
-                yield self.client.create(self.path, acls=acls)
+                yield self.client.create(path, acls=acls)
             except NodeExistsException:
                 pass
 
-        if force:
+        if self.force:
             log.warn("using '--force' to initialize hierarchy.")
 
-        yield create(self.path + "machines", acls)
-        yield create(self.path + "services", acls)
-
-    @inlineCallbacks
-    def _create_or_delete(self, path, acls):
         try:
-            yield self.client.create(path, acls=acls)
-        except NodeExistsException:
-            names = yield self.client.get_children(path)
-            for name in names:
-                yield self.client.delete("%s/%s" % (path, name))
-
-    @inlineCallbacks
-    def _create_or_fail(self, path, acls):
-        try:
-            yield self.client.create(path, acls=acls)
+            yield create(self.path + "machines", acls=acls)
+            yield create(self.path + "services", acls=acls)
         except NodeExistsException as exc:
+            if self.force:
+                raise
+
             raise StateException(
                 "%s!\nIf you're sure, run command again "
                 "with '--force'." % exc

@@ -2,6 +2,10 @@ class PopException(Exception):
     """Exception hierarchy base class."""
 
 
+class ServiceException(PopException):
+    """Prompt runtime to start service."""
+
+
 class StateException(PopException):
     """Incorrect state for required operation."""
 

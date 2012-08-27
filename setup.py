@@ -11,6 +11,7 @@ install_requires = [
     'twisted',
     'txzookeeper >= 0.9.6',
     'PyYAML>=3.9',
+    'venusian',
     ]
 
 if sys.version_info[:3] < (2,6,0):
