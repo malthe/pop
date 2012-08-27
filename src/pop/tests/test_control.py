@@ -126,8 +126,7 @@ class ServiceTest(ControlTestCase):
         for pid in self.pids:
             os.kill(pid, signal.SIGKILL)
 
-        from twisted.internet import reactor
-        for call in reactor.getDelayedCalls():
+        for call in self.reactor.getDelayedCalls():
             if call.func.__name__ == 'reconnector':
                 call.cancel()
 
@@ -143,7 +142,7 @@ class ServiceTest(ControlTestCase):
         return MachineAgent(client, self.path[:-1], uuid)
 
     @inlineCallbacks
-    def test_echo_service(self):
+    def test_threaded_echo_service(self):
         yield self.cmd("init")
         yield self.cmd("add", "--name", "echo", "threaded-echo")
         yield self.cmd("deploy", "echo")
@@ -161,8 +160,7 @@ class ServiceTest(ControlTestCase):
         from pop.tests.utils import create_echo_client
         factory = create_echo_client(received)
 
-        from twisted.internet import reactor
-        connector = reactor.connectTCP('127.0.0.1', 8080, factory)
+        connector = self.reactor.connectTCP('127.0.0.1', 8080, factory)
 
         def deferred():
             connector.disconnect()
@@ -172,20 +170,19 @@ class ServiceTest(ControlTestCase):
                 'Hello, world! What a fine day it is. Bye-bye!'
                 )
 
-        yield deferLater(reactor, 0.3, deferred)
+        yield deferLater(self.reactor, 0.3, deferred)
 
     @inlineCallbacks
     def run_service(self, name, time):
         agent = self.get_machine_agent()
         yield agent.connect()
 
-        from twisted.internet import reactor
         from pop.exceptions import ServiceException
 
         try:
             self.pids = yield agent.run()
         except ServiceException as exc:
             yield self.cmd("start", str(exc))
-            yield deferLater(reactor, time, reactor.stop)
+            yield deferLater(self.reactor, time, self.reactor.stop)
 
         returnValue(agent)

@@ -9,6 +9,11 @@ setDebugging(True)
 
 
 class TestCase(TrialTestCase):
+    @property
+    def reactor(self):
+        from twisted.internet import reactor
+        return reactor
+
     def capture_stream(self, stream_name):
         original = getattr(sys, stream_name)
         new = StringIO.StringIO()
@@ -38,3 +43,4 @@ class TestCase(TrialTestCase):
             logger.setLevel(old_logger_level)
 
         return log_file
+
