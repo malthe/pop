@@ -5,7 +5,6 @@ from twisted.internet.defer import inlineCallbacks
 
 from pop.services.common import PythonNetworkService
 from pop.services import register
-from pop.services.utils import nodeproperty
 from pop import log
 
 
@@ -14,8 +13,6 @@ class EchoService(PythonNetworkService):
     name = "echo"
     description = "HTTP echo service"
 
-    twisted = nodeproperty("twisted", False)
-
     running = False
     stop = None
 
@@ -23,52 +20,47 @@ class EchoService(PythonNetworkService):
     def start(self):
         assert self.running is False
 
-        use_twisted = yield self.twisted
+        backlog = 5
+        size = 1024
+        host = yield self.host
+        port = yield self.port
 
-        if use_twisted:
-            raise NotImplementedError("twisted")
-        else:
-            backlog = 5
-            size = 1024
-            host = yield self.host
-            port = yield self.port
+        def start(s):
+            s.settimeout(0.1)
 
-            def start(s):
-                s.settimeout(0.1)
+            try:
+                s.bind((host, port))
+            except socket.error as exc:
+                log.fatal(exc)
+                return
 
+            s.listen(backlog)
+            self.running = True
+
+            while 1:
                 try:
-                    s.bind((host, port))
+                    client, address = s.accept()
+
+                    data = client.recv(size)
+                    if data:
+                        client.send(data)
+
+                    client.close()
+                except socket.timeout as exc:
+                    log.debug(exc)
                 except socket.error as exc:
-                    log.fatal(exc)
-                    return
+                    log.info(exc)
+                    break
 
-                s.listen(backlog)
-                self.running = True
+            s.close()
+            self.running = False
 
-                while 1:
-                    try:
-                        client, address = s.accept()
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-                        data = client.recv(size)
-                        if data:
-                            client.send(data)
+        def stop():
+            s.shutdown()
 
-                        client.close()
-                    except socket.timeout as exc:
-                        log.debug(exc)
-                    except socket.error as exc:
-                        log.info(exc)
-                        break
-
-                s.close()
-                self.running = False
-
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-            def stop():
-                s.shutdown()
-
-            thread = threading.Thread(target=start, args=(s, ))
-            thread.daemon = True
-            thread.start()
+        thread = threading.Thread(target=start, args=(s, ))
+        thread.daemon = True
+        thread.start()
