@@ -145,9 +145,37 @@ class ServiceTest(ControlTestCase):
     @inlineCallbacks
     def test_echo_service(self):
         yield self.cmd("init")
-        yield self.cmd("add", "--name", "echo", "socket-based-echo")
+        yield self.cmd("add", "--name", "echo", "threaded-echo")
         yield self.cmd("deploy", "echo")
 
+        agent = yield self.run_service("echo", 0.5)
+
+        try:
+            yield self.verify_echo_service()
+        finally:
+            yield agent.close()
+
+    def verify_echo_service(self):
+        received = []
+
+        from pop.tests.utils import create_echo_client
+        factory = create_echo_client(received)
+
+        from twisted.internet import reactor
+        connector = reactor.connectTCP('127.0.0.1', 8080, factory)
+
+        def deferred():
+            connector.disconnect()
+
+            self.assertEqual(
+                " ".join(received),
+                'Hello, world! What a fine day it is. Bye-bye!'
+                )
+
+        yield deferLater(reactor, 0.3, deferred)
+
+    @inlineCallbacks
+    def run_service(self, name, time):
         agent = self.get_machine_agent()
         yield agent.connect()
 
@@ -155,25 +183,9 @@ class ServiceTest(ControlTestCase):
         from pop.exceptions import ServiceException
 
         try:
-            try:
-                self.pids = yield agent.run()
-            except ServiceException as exc:
-                yield self.cmd("start", str(exc))
-                deferred = reactor.stop
-            else:
-                from pop.tests.utils import create_echo_client
-                received = []
-                factory = create_echo_client(received)
-                connector = reactor.connectTCP('127.0.0.1', 8080, factory)
+            self.pids = yield agent.run()
+        except ServiceException as exc:
+            yield self.cmd("start", str(exc))
+            yield deferLater(reactor, time, reactor.stop)
 
-                def deferred():
-                    connector.disconnect()
-
-                    self.assertEqual(
-                        " ".join(received),
-                        'Hello, world! What a fine day it is. Bye-bye!'
-                        )
-
-            yield deferLater(reactor, 0.3, deferred)
-        finally:
-            yield agent.close()
+        returnValue(agent)

@@ -9,8 +9,8 @@ from pop import log
 
 
 @register
-class SocketBasedEchoService(PythonNetworkService):
-    name = "socket-based-echo"
+class ThreadedEchoService(PythonNetworkService):
+    name = "threaded-echo"
 
     running = False
     stop = None
@@ -63,3 +63,21 @@ class SocketBasedEchoService(PythonNetworkService):
         thread = threading.Thread(target=start, args=(s, ))
         thread.daemon = True
         thread.start()
+
+
+@register
+class TwistedEchoService(PythonNetworkService):
+    name = "twisted-echo"
+
+    running = False
+    stop = None
+
+    @inlineCallbacks
+    def start(self):
+        assert self.running is False
+
+        backlog = 5
+        size = 1024
+        host = yield self.host
+        port = yield self.port
+
