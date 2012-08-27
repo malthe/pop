@@ -9,8 +9,8 @@ from pop import log
 
 
 @register
-class EchoService(PythonNetworkService):
-    name = "echo"
+class SocketBasedEchoService(PythonNetworkService):
+    name = "socket-based-echo"
 
     running = False
     stop = None

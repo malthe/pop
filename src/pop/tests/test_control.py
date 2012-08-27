@@ -145,7 +145,7 @@ class ServiceTest(ControlTestCase):
     @inlineCallbacks
     def test_echo_service(self):
         yield self.cmd("init")
-        yield self.cmd("add", "echo")
+        yield self.cmd("add", "--name", "echo", "socket-based-echo")
         yield self.cmd("deploy", "echo")
 
         agent = self.get_machine_agent()
