@@ -2,10 +2,16 @@ import socket
 import threading
 
 from twisted.internet.defer import inlineCallbacks
+from twisted.internet.protocol import Protocol, Factory
 
 from pop.services.common import PythonNetworkService
 from pop.services import register
 from pop import log
+
+
+class Echo(Protocol):
+    def dataReceived(self, data):
+        self.transport.write(data)
 
 
 @register
@@ -76,8 +82,11 @@ class TwistedEchoService(PythonNetworkService):
     def start(self):
         assert self.running is False
 
-        backlog = 5
-        size = 1024
         host = yield self.host
         port = yield self.port
 
+        f = Factory()
+        f.protocol = Echo
+
+        from twisted.internet import reactor
+        reactor.listenTCP(port, f, interface=host)

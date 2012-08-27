@@ -154,6 +154,19 @@ class ServiceTest(ControlTestCase):
         finally:
             yield agent.close()
 
+    @inlineCallbacks
+    def test_twisted_echo_service(self):
+        yield self.cmd("init")
+        yield self.cmd("add", "--name", "echo", "twisted-echo")
+        yield self.cmd("deploy", "echo")
+
+        agent = yield self.run_service("echo", 0.5)
+
+        try:
+            yield self.verify_echo_service()
+        finally:
+            yield agent.close()
+
     def verify_echo_service(self):
         received = []
 
@@ -170,7 +183,7 @@ class ServiceTest(ControlTestCase):
                 'Hello, world! What a fine day it is. Bye-bye!'
                 )
 
-        yield deferLater(self.reactor, 0.3, deferred)
+        return deferLater(self.reactor, 0.5, deferred)
 
     @inlineCallbacks
     def run_service(self, name, time):
