@@ -147,7 +147,7 @@ class ServiceTest(ControlTestCase):
         yield self.cmd("add", "--name", "echo", "threaded-echo")
         yield self.cmd("deploy", "echo")
 
-        agent = yield self.run_service("echo", 0.5)
+        agent = yield self.run_machine(0.5)
 
         try:
             yield self.verify_echo_service()
@@ -160,14 +160,14 @@ class ServiceTest(ControlTestCase):
         yield self.cmd("add", "--name", "echo", "twisted-echo")
         yield self.cmd("deploy", "echo")
 
-        agent = yield self.run_service("echo", 0.5)
+        agent = yield self.run_machine(0.5)
 
         try:
             yield self.verify_echo_service()
         finally:
             yield agent.close()
 
-    def verify_echo_service(self):
+    def verify_echo_service(self, invert=False):
         received = []
 
         from pop.tests.utils import create_echo_client
@@ -178,7 +178,10 @@ class ServiceTest(ControlTestCase):
         def deferred():
             connector.disconnect()
 
-            self.assertEqual(
+            assertion = self.assertNotEqual if invert \
+                        else self.assertEqual
+
+            assertion(
                 " ".join(received),
                 'Hello, world! What a fine day it is. Bye-bye!'
                 )
@@ -186,7 +189,7 @@ class ServiceTest(ControlTestCase):
         return deferLater(self.reactor, 0.5, deferred)
 
     @inlineCallbacks
-    def run_service(self, name, time):
+    def run_machine(self, time):
         agent = self.get_machine_agent()
         yield agent.connect()
 
