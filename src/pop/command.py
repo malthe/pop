@@ -1,12 +1,13 @@
+import os
 import sys
-import functools
 import shutil
+import signal
+import functools
 
 from StringIO import StringIO
 
 from twisted.internet.defer import inlineCallbacks
 from twisted.internet.defer import returnValue
-from twisted.internet.defer import maybeDeferred
 from twisted.python.failure import Failure
 
 from txzookeeper.client import ZOO_OPEN_ACL_UNSAFE
@@ -26,7 +27,11 @@ def run(func, debug, options):
     from twisted.internet import reactor
 
     def wrapper():
-        d = maybeDeferred(func, options)
+        d = func(options)
+
+        @d.addCallback
+        def disconnect(client):
+            return client.close()
 
         @d.addBoth
         def handle_exit(result, stream=sys.stderr, reactor=reactor):
@@ -64,9 +69,8 @@ def connected(func):
         log.debug("connecting to zookeeper...")
         yield command.client.connect()
         log.debug("connected.")
-        result = yield func(command, **kwargs)
-        yield command.client.close()
-        returnValue(result)
+        yield func(command, **kwargs)
+        returnValue(command.client)
         log.debug("connection closed.")
     return decorator
 
@@ -118,7 +122,7 @@ class Command(object):
         path = self.get_service_path(name)
         factory = self.get_service_factory(factory_name)
         service = factory(self.client, path)
-        yield service.register()
+        yield service.add()
 
     @twisted
     def cmd_fg(self):
@@ -160,8 +164,19 @@ class Command(object):
 
     @twisted
     def cmd_start(self, name):
+        uuid = local_machine_uuid()
+        machine = str(uuid)
+
         service = yield self.get_service(name)
+
         yield service.start()
+        yield service.register(machine)
+
+        def stop(signum, frame, service=service):
+            from twisted.internet import reactor
+            reactor.callWhenRunning(service.stop)
+
+        signal.signal(signal.SIGHUP, stop)
 
     @twisted
     def cmd_status(self):
@@ -174,6 +189,13 @@ class Command(object):
             sys.stdout.write("machines: %s\n" % ", ".join(machines))
         else:
             sys.stdout.write("machines: -\n")
+
+    @twisted
+    def cmd_stop(self, name):
+        service = yield self.get_service(name)
+        uuid = local_machine_uuid()
+        machine = str(uuid)
+        yield service.hangup(machine)
 
     @inlineCallbacks
     def _initialize_hierarchy(self, admin_identity):

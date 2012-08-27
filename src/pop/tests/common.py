@@ -3,9 +3,7 @@ import logging
 import StringIO
 
 from twisted.trial.unittest import TestCase as TrialTestCase
-from twisted.internet.defer import setDebugging
-
-setDebugging(True)
+from twisted.internet.defer import Deferred
 
 
 class TestCase(TrialTestCase):
@@ -44,3 +42,7 @@ class TestCase(TrialTestCase):
 
         return log_file
 
+    def sleep(self, seconds):
+        d = Deferred()
+        self.reactor.callLater(seconds, d.callback, seconds)
+        return d

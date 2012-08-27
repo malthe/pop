@@ -5,7 +5,7 @@ from twisted.internet.defer import inlineCallbacks
 from zookeeper import NoNodeException
 
 
-def nodeproperty(path, default):
+def nodeproperty(path, default, typecast=str):
     @property
     @inlineCallbacks
     def prop(self):
@@ -14,6 +14,7 @@ def nodeproperty(path, default):
         except NoNodeException:
             value = default
 
+        value = typecast(value)
         returnValue(value)
 
     return prop

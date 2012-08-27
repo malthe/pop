@@ -152,6 +152,19 @@ class CommandConfiguration(object):
         return sub_parser
 
     @register
+    def configure_stop_parser(self):
+        sub_parser = self.subparsers.add_parser(
+            'stop', help='stop machine or service agent running in background',
+            )
+
+        sub_parser.add_argument(
+            'name', action='store', default=None,
+            help='name of the service to stop',
+            )
+
+        return sub_parser
+
+    @register
     def configure_dump_parser(self):
         sub_parser = self.subparsers.add_parser(
             'dump', help='dump namespace',

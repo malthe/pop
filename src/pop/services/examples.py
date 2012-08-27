@@ -1,7 +1,7 @@
 import socket
 import threading
 
-from twisted.internet.defer import inlineCallbacks
+from twisted.internet.defer import inlineCallbacks, Deferred
 from twisted.internet.protocol import Protocol, Factory
 
 from pop.services.common import PythonNetworkService
@@ -21,16 +21,23 @@ class ThreadedEchoService(PythonNetworkService):
     running = False
     stop = None
 
+    backlog = 5
+    size = 1024
+
     @inlineCallbacks
     def start(self):
         assert self.running is False
 
-        backlog = 5
-        size = 1024
         host = yield self.host
         port = yield self.port
 
+        yield self._spawn_thread(host, port)
+
+    def _spawn_thread(self, host, port):
+        d = Deferred()
+
         def start(s):
+            d.callback(s)
             s.settimeout(0.1)
 
             try:
@@ -39,14 +46,14 @@ class ThreadedEchoService(PythonNetworkService):
                 log.fatal(exc)
                 return
 
-            s.listen(backlog)
+            s.listen(self.backlog)
             self.running = True
 
             while 1:
                 try:
                     client, address = s.accept()
 
-                    data = client.recv(size)
+                    data = client.recv(self.size)
                     if data:
                         client.send(data)
 
@@ -64,11 +71,16 @@ class ThreadedEchoService(PythonNetworkService):
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
         def stop():
+            del self.stop
             s.shutdown()
+
+        self.stop = stop
 
         thread = threading.Thread(target=start, args=(s, ))
         thread.daemon = True
         thread.start()
+
+        return d
 
 
 @register
@@ -89,4 +101,13 @@ class TwistedEchoService(PythonNetworkService):
         f.protocol = Echo
 
         from twisted.internet import reactor
-        reactor.listenTCP(port, f, interface=host)
+        tcp = reactor.listenTCP(port, f, interface=host)
+        self.running = True
+
+        def stop():
+            self.running = False
+            return tcp.stopListening()
+
+        self.stop = stop
+
+        yield tcp

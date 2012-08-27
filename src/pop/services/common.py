@@ -1,4 +1,12 @@
-from twisted.internet.defer import inlineCallbacks
+import os
+import json
+import signal
+
+import zookeeper
+
+from twisted.internet.defer import \
+     inlineCallbacks, \
+     returnValue
 
 from pop import log
 from pop.agent import Agent
@@ -25,15 +33,52 @@ class Service(Agent):
         """Deploy service."""
 
         log.debug("machine id: %s." % machine)
-        yield self.client.create(self.path + "/machines/" + machine)
+
+        path = self.path + "/machines"
+        value, metadata = yield self.client.get(path)
+        machines = json.loads(value)
+        machines.append(machine)
+
+        yield self.client.set(path, json.dumps(machines))
 
     @inlineCallbacks
-    def register(self):
-        """Register service."""
+    def get_process_id(self, machine):
+        """Return process id for service running on provided machine."""
+
+        d = self.client.get(self.path + "/machines/" + machine)
+        pid, metadata = yield d
+        returnValue(pid)
+
+    @inlineCallbacks
+    def hangup(self, machine):
+        path = self.path + "/machines/" + machine
+        d, watch = self.client.get_and_watch(path)
+
+        try:
+            pid, metadata = yield d
+        except zookeeper.NoNodeException:
+            raise ValueError("Service not running on this machine.")
+
+        os.kill(int(pid), signal.SIGHUP)
+        yield watch
+
+    @inlineCallbacks
+    def register(self, machine):
+        """Register service for machine."""
+
+        yield self.client.create(
+            self.path + "/machines/" + machine,
+            str(os.getpid()),
+            flags=zookeeper.EPHEMERAL
+            )
+
+    @inlineCallbacks
+    def add(self):
+        """Add service definition to hierarchy."""
 
         yield self.client.create(self.path)
         yield self.client.create(self.path + "/type", self.name)
-        yield self.client.create(self.path + "/machines")
+        yield self.client.create(self.path + "/machines", "[]")
 
         log.debug("registered service '%s' at %s." % (self.name, self.path))
 
@@ -46,4 +91,4 @@ class PythonNetworkService(PythonService):
     """Base class for Python-based network services."""
 
     host = nodeproperty("host", "localhost")
-    port = nodeproperty("port", 8080)
+    port = nodeproperty("port", 8080, int)

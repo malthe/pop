@@ -93,8 +93,7 @@ class ControlTestCase(TestCase):
 class InitializationTest(ControlTestCase):
     @inlineCallbacks
     def test_bare_invocation(self):
-        result = yield self.cmd("init")
-        self.assertIs(result, None)
+        yield self.cmd("init")
 
     @inlineCallbacks
     def test_repeat_bare_invocation(self):
@@ -107,8 +106,7 @@ class InitializationTest(ControlTestCase):
     @inlineCallbacks
     def test_repeat_invocation_using_force(self):
         yield self.cmd("init")
-        result = yield self.cmd("--force", "init")
-        self.assertIs(result, None)
+        yield self.cmd("--force", "init")
 
 
 class DumpTest(ControlTestCase):
@@ -167,7 +165,22 @@ class ServiceTest(ControlTestCase):
         finally:
             yield agent.close()
 
-    def verify_echo_service(self, invert=False):
+    @inlineCallbacks
+    def test_twisted_echo_service_stop_and_start(self):
+        yield self.cmd("init")
+        yield self.cmd("add", "--name", "echo", "twisted-echo")
+        yield self.cmd("deploy", "echo")
+
+        agent = yield self.run_machine(1.0)
+        yield self.sleep(0.5)
+        yield self.cmd("stop", "echo")
+
+        try:
+            yield self.verify_echo_service(False)
+        finally:
+            yield agent.close()
+
+    def verify_echo_service(self, status=True):
         received = []
 
         from pop.tests.utils import create_echo_client
@@ -178,8 +191,8 @@ class ServiceTest(ControlTestCase):
         def deferred():
             connector.disconnect()
 
-            assertion = self.assertNotEqual if invert \
-                        else self.assertEqual
+            assertion = self.assertEqual if status \
+                        else self.assertNotEqual
 
             assertion(
                 " ".join(received),
@@ -198,7 +211,14 @@ class ServiceTest(ControlTestCase):
         try:
             self.pids = yield agent.run()
         except ServiceException as exc:
-            yield self.cmd("start", str(exc))
-            yield deferLater(self.reactor, time, self.reactor.stop)
+            client = yield self.cmd("start", str(exc))
+
+            @inlineCallbacks
+            def stop():
+                yield client.close()
+                self.reactor.stop()
+                os._exit(0)
+
+            yield deferLater(self.reactor, time, stop)
 
         returnValue(agent)

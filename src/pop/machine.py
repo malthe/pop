@@ -1,4 +1,5 @@
 import os
+import json
 
 from pop import log
 from pop.agent import Agent
@@ -40,9 +41,11 @@ class MachineAgent(Agent):
         for name in services:
             log.debug("scanning service: '%s'..." % name)
 
-            machines = yield self.client.get_children(
+            value, metadata = yield self.client.get(
                 self.path + "/services/" + name + "/machines"
                 )
+
+            machines = json.loads(value)
 
             if self.name in machines:
                 deployed.add(name)
