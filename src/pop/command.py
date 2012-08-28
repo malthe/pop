@@ -66,6 +66,11 @@ def connected(func):
     @inlineCallbacks
     @functools.wraps(func)
     def decorator(command, **kwargs):
+        log.debug("%s(%s)" % (
+            func.__name__,
+            ", ".join(("%s=%r" % args for args in kwargs.items()))
+            ))
+
         log.debug("connecting to zookeeper...")
         yield command.client.connect()
         log.debug("connected.")
@@ -114,7 +119,7 @@ class Command(object):
                 )
 
     @twisted
-    def cmd_add(self, name, factory_name):
+    def cmd_add(self, name, factory_name, **options):
         if name is None:
             log.info("using name: '%s'." % factory_name)
             name = factory_name
@@ -123,6 +128,11 @@ class Command(object):
         factory = self.get_service_factory(factory_name)
         service = factory(self.client, path)
         yield service.add()
+
+        if options:
+            settings = yield service.get_settings()
+            settings.update(options)
+            yield settings.save()
 
     @twisted
     def cmd_fg(self):
@@ -168,9 +178,11 @@ class Command(object):
         machine = str(uuid)
 
         service = yield self.get_service(name)
-
+        log.info("starting service: %r..." % name)
         yield service.start()
-        yield service.register(machine)
+
+        log.debug("registering service on machine: %s..." % machine)
+        yield service.register(machine, pid=os.getpid())
 
         def stop(signum, frame, service=service):
             from twisted.internet import reactor
@@ -195,7 +207,18 @@ class Command(object):
         service = yield self.get_service(name)
         uuid = local_machine_uuid()
         machine = str(uuid)
-        yield service.hangup(machine)
+
+        state, watch = yield service.get_state(machine, True)
+        pid = state.get('pid')
+
+        if pid is None:
+            log.info("service not running.")
+        else:
+            log.debug("sending SIGHUP to process: %d." % state['pid'])
+            os.kill(state['pid'], signal.SIGHUP)
+
+            log.debug("waiting for ephemeral node to disappear...")
+            yield watch
 
     @inlineCallbacks
     def _initialize_hierarchy(self, admin_identity):

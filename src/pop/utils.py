@@ -13,6 +13,16 @@ from zookeeper import NoNodeException
 from .exceptions import StateNotFound
 
 
+def autocast(string, types):
+    for cast in types:
+        try:
+            return cast(string)
+        except BaseException:
+            pass
+
+    return string
+
+
 def local_machine_uuid():
     """Return local machine unique identifier.
 

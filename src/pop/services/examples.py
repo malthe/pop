@@ -1,5 +1,6 @@
 import socket
 import threading
+import zookeeper
 
 from twisted.internet.defer import inlineCallbacks, Deferred
 from twisted.internet.protocol import Protocol, Factory
@@ -18,7 +19,6 @@ class Echo(Protocol):
 class ThreadedEchoService(PythonNetworkService):
     name = "threaded-echo"
 
-    running = False
     stop = None
 
     backlog = 5
@@ -26,18 +26,14 @@ class ThreadedEchoService(PythonNetworkService):
 
     @inlineCallbacks
     def start(self):
-        assert self.running is False
+        settings = yield self.get_settings()
+        deferred = self._spawn(settings['host'], settings['port'])
+        self.host, self.port = yield deferred
 
-        host = yield self.host
-        port = yield self.port
-
-        yield self._spawn_thread(host, port)
-
-    def _spawn_thread(self, host, port):
+    def _spawn(self, host, port):
         d = Deferred()
 
-        def start(s):
-            d.callback(s)
+        def start(s, host=host, port=port):
             s.settimeout(0.1)
 
             try:
@@ -46,8 +42,12 @@ class ThreadedEchoService(PythonNetworkService):
                 log.fatal(exc)
                 return
 
+            if port == 0:
+                host, port = s.getsockname()
+
+            d.callback((host, port))
+
             s.listen(self.backlog)
-            self.running = True
 
             while 1:
                 try:
@@ -65,7 +65,6 @@ class ThreadedEchoService(PythonNetworkService):
                     break
 
             s.close()
-            self.running = False
 
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -87,27 +86,16 @@ class ThreadedEchoService(PythonNetworkService):
 class TwistedEchoService(PythonNetworkService):
     name = "twisted-echo"
 
-    running = False
     stop = None
 
     @inlineCallbacks
     def start(self):
-        assert self.running is False
-
-        host = yield self.host
-        port = yield self.port
+        settings = yield self.get_settings()
 
         f = Factory()
         f.protocol = Echo
 
         from twisted.internet import reactor
-        tcp = reactor.listenTCP(port, f, interface=host)
-        self.running = True
-
-        def stop():
-            self.running = False
-            return tcp.stopListening()
-
-        self.stop = stop
-
-        yield tcp
+        p = reactor.listenTCP(settings['port'], f, interface=settings['host'])
+        self.host, self.port = p.socket.getsockname()
+        self.stop = p.stopListening

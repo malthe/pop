@@ -5,7 +5,6 @@ from pop import log
 from pop.agent import Agent
 from pop.exceptions import ServiceException
 
-
 from twisted.internet.defer import returnValue
 from twisted.internet.defer import inlineCallbacks
 
@@ -41,23 +40,34 @@ class MachineAgent(Agent):
         for name in services:
             log.debug("scanning service: '%s'..." % name)
 
-            value, metadata = yield self.client.get(
-                self.path + "/services/" + name + "/machines"
-                )
+            try:
+                value, metadata = yield self.client.get(
+                    self.path + "/services/" + name + "/machines"
+                    )
+            except NoNodeException:
+                log.warn(
+                    "missing machines declaration for service: %s." %
+                    name
+                    )
+                machines = []
+            else:
+                machines = json.loads(value)
 
-            machines = json.loads(value)
+            log.debug("machines: %s." % ", ".join(machines))
 
             if self.name in machines:
                 deployed.add(name)
 
         count = len(deployed)
-        log.debug("found %d services deployed for this machine." % count)
+        log.debug("found %d service(s) configured for this machine." % count)
 
         running = yield self.client.get_children(
             self.path + "/machines/" + self.name + "/services"
             )
 
         self.stopped = deployed - set(running)
+        log.debug("services not running: %s." % ", ".join(
+            map(repr, self.stopped)))
 
     @inlineCallbacks
     def run(self):

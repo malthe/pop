@@ -12,12 +12,31 @@ from pop import log
 from pop.command import Command
 from pop.command import run
 from pop import services
+from pop.utils import autocast
 
 LEVELS = (
     logging.DEBUG, logging.INFO
     )
 
 DESCRIPTION = "Automated build, deployment and service management tool."
+
+
+class ExtraArgumentParser(argparse.ArgumentParser):
+    """An argument parser that accepts additional arguments."""
+
+    def parse_known_args(self, *args, **kwargs):
+        args, argv = super(ExtraArgumentParser, self).parse_known_args(
+            *args, **kwargs)
+
+        # Turn remaining arguments pairwise into a dictionary, casting
+        # input into ints, floats or strings.
+        kwargs = dict(
+            (name.lstrip('-'), autocast(value, (int, float))) for
+            (name, value) in zip(*[iter(argv)] * 2)
+            )
+
+        args.__dict__.setdefault('extra', {}).update(kwargs)
+        return args, []
 
 
 class CommandConfiguration(object):
@@ -50,6 +69,12 @@ class CommandConfiguration(object):
 
             path = options.pop('path_prefix')
             force = options.pop('force')
+            extra = options.pop('extra')
+
+            # Apply settings to options dictionary. While this does
+            # conflate arguments for the utility with command options,
+            # that's something we're willing to accept.
+            options.update(extra)
 
             controller = Command(client, path, self.services, force)
             method = getattr(controller, "cmd_%s" % name)
@@ -233,6 +258,7 @@ def parse(args):
     subparsers = parser.add_subparsers(
         title='command argument',
         metavar='<command>',
+        parser_class=ExtraArgumentParser,
         )
 
     configuration = CommandConfiguration(subparsers)
