@@ -182,32 +182,49 @@ State
 
 *Pop* keeps all state in ZooKeeper (ZK).
 
-Below is a description of the different kinds of state objects in use:
+The table below lists the various paths involved.
 
-#. *Machines*.
+=================================================  ==============  ==============  ==============
+ Path                                               Data            Format          Type
+=================================================  ==============  ==============  ==============
+``/machines``
+``/machines/<machine-id>``
+``/machines/<machine-id>/<service-name>``           PID [#]_        Integer         Ephemeral
+``/services``
+``/services/<service-name>``
+``/services/<service-name>/machines``               Machines [#]_   JSON
+``/services/<service-name>/settings``               Settings [#]_   JSON
+``/services/<service-name>/state/<machine-id>``     State [#]_      JSON            Ephemeral
+=================================================  ==============  ==============  ==============
 
-   This is a list of the available machines. When a machine agent
-   start, it adds an `ephemeral node
-   <http://en.wiktionary.org/wiki/ephemeral>`_ to this list.
+Notes:
 
-   The keys in the list are machine hardware UUIDs. On Linux this is
-   the value returned by `HAL <http://linux.die.net/man/8/hald>`_ for
-   the ``"system.hardware.uuid"`` key.
+.. [#] The process identifier.
 
-#. *Services*.
+.. [#] This is a list of machines on which the service should run.
 
-   This is a list of services that can be deployed on one or more
-   machines.
+.. [#] These are the settings used to bring up the service (regardless
+       of the machine). If changed, the service will be restarted.
 
-   Each service keeps a list of:
+.. [#] This is set by the service when it's up and running; the
+       contents is specific to the implementation, but must be in JSON-format.
 
-   #. Machines
-   #. For each machine, a PID (for the Python process)
-   #. For each PID, a configuration signature (SHA-1 digest)
+Note that an ephemeral node is one that's created using the
+``zookeeper.EPHEMERAL`` flag and immediately removed when the creator
+disconnects.
 
-   If a service configuration changes, all of its instances are
-   automatically restarted (by the machine agent).
+Terminology
+-----------
 
+Machine identification
+
+    The *machine id* is a hardware UUIDs. On Linux this is the value
+    returned by `HAL <http://linux.die.net/man/8/hald>`_ for the
+    ``"system.hardware.uuid"`` key.
+
+Service identification
+
+    Each service is required to have a unique *service name* (a string).
 
 Scripts
 =======
