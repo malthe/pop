@@ -36,14 +36,25 @@ class ZookeeperClient(client.ZookeeperClient):
                 break
 
     @inlineCallbacks
-    def create_multiple(self, *paths, **kwargs):
-        """Create multiple paths; ignore existing."""
+    def create_path(self, path, **kwargs):
+        """Create nodes required to complete path."""
 
-        for path in paths:
-            try:
-                yield self.create(path, **kwargs)
-            except NodeExistsException:
-                pass
+        i = 0
+        while i < len(path):
+            i = path.find("/", i)
+
+            if i < 0:
+                return
+
+            subpath = path[:i]
+
+            if i > 0:
+                try:
+                    yield self.create(subpath, **kwargs)
+                except NodeExistsException:
+                    pass
+
+            i += 1
 
     def set_or_create(self, path, *args, **kwargs):
         """Sets the data of a node at the given path, or creates it."""

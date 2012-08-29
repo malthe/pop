@@ -1,8 +1,7 @@
 import socket
 import threading
-import zookeeper
 
-from twisted.internet.defer import inlineCallbacks, Deferred
+from twisted.internet.defer import inlineCallbacks, Deferred, returnValue
 from twisted.internet.protocol import Protocol, Factory
 
 from pop.services.common import PythonNetworkService
@@ -28,7 +27,8 @@ class ThreadedEchoService(PythonNetworkService):
     def start(self):
         settings = yield self.get_settings()
         deferred = self._spawn(settings['host'], settings['port'])
-        self.host, self.port = yield deferred
+        host, port = yield deferred
+        returnValue({'host': host, 'port': port})
 
     def _spawn(self, host, port):
         d = Deferred()
@@ -97,5 +97,7 @@ class TwistedEchoService(PythonNetworkService):
 
         from twisted.internet import reactor
         p = reactor.listenTCP(settings['port'], f, interface=settings['host'])
-        self.host, self.port = p.socket.getsockname()
         self.stop = p.stopListening
+
+        host, port = p.socket.getsockname()
+        returnValue({'host': host, 'port': port})

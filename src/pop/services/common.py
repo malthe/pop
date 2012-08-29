@@ -52,14 +52,6 @@ class Service(Agent):
 
         yield self.client.set(path, json.dumps(machines))
 
-    @inlineCallbacks
-    def get_process_id(self, machine):
-        """Return process id for service running on provided machine."""
-
-        d = self.client.get(self.path + "/machines/" + machine)
-        pid, metadata = yield d
-        returnValue(pid)
-
     def get_settings(self):
         if self._settings is None:
             defaults = {}
@@ -112,24 +104,6 @@ class Service(Agent):
 
         return d
 
-    def hangup(self, machine):
-        path = self.path + "/state/" + machine
-        d, watch = self.client.get_and_watch(path)
-
-        try:
-            pid, metadata = yield d
-        except zookeeper.NoNodeException:
-            raise ValueError("Service not running on this machine.")
-
-        yield watch
-
-    def register(self, machine, **state):
-        return self.client.create(
-            self.path + "/state/" + machine,
-            json.dumps(state),
-            flags=zookeeper.EPHEMERAL,
-            )
-
     @inlineCallbacks
     def add(self):
         """Add service definition to hierarchy."""
@@ -151,11 +125,3 @@ class PythonService(Service):
 
 class PythonNetworkService(PythonService):
     """Base class for Python-based network services."""
-
-    port = None
-
-    def register(self, machine, **state):
-        assert self.port is not None
-
-        return super(PythonNetworkService, self).register(
-            machine, port=self.port, **state)

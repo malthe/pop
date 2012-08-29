@@ -1,4 +1,3 @@
-import os
 import json
 
 from pop import log
@@ -10,7 +9,6 @@ from pop.process import fork
 from twisted.internet.defer import returnValue
 from twisted.internet.defer import inlineCallbacks
 
-from zookeeper import NodeExistsException
 from zookeeper import NoNodeException
 
 
@@ -22,13 +20,13 @@ class MachineAgent(Agent):
 
         self.name = str(uuid)
         self.stopped = set()
+        self.pids = []
 
     @inlineCallbacks
     def initialize(self):
         """Create machine state node."""
 
-        yield self.client.create_multiple(
-            self.path + "/machines/" + self.name,
+        yield self.client.create_path(
             self.path + "/machines/" + self.name + "/services"
             )
 
@@ -36,11 +34,13 @@ class MachineAgent(Agent):
     def scan(self):
         """Analyze state and queue tasks."""
 
+        log.debug("scanning machine: %s..." % self.name)
+
         deployed = set()
         services = yield self.client.get_children(self.path + "/services")
 
         for name in services:
-            log.debug("scanning service: '%s'..." % name)
+            log.debug("checking service: '%s'..." % name)
 
             try:
                 value, metadata = yield self.client.get(
@@ -55,27 +55,40 @@ class MachineAgent(Agent):
             else:
                 machines = json.loads(value)
 
-            log.debug("machines: %s." % ", ".join(machines))
+            if machines:
+                log.debug("machines: %s." % ", ".join(machines))
 
-            if self.name in machines:
-                deployed.add(name)
+                if self.name in machines:
+                    deployed.add(name)
+            else:
+                log.debug("service not configured for any machine.")
 
         count = len(deployed)
         log.debug("found %d service(s) configured for this machine." % count)
 
         running = yield self.client.get_children(
-            self.path + "/machines/" + self.name + "/services"
+            self.path + "/machines/" + self.name
             )
 
         self.stopped = deployed - set(running)
-        log.debug("services not running: %s." % ", ".join(
-            map(repr, self.stopped)))
+
+        if self.stopped:
+            log.debug("services not running: %s." % ", ".join(
+                map(repr, self.stopped)))
+        elif running:
+            log.debug("all services are up.")
 
     @inlineCallbacks
     def run(self):
+        pids = self.start_services()
+        returnValue(pids)
+
+    @inlineCallbacks
+    def start(self):
         yield self.initialize()
         yield self.scan()
 
+    def start_services(self):
         pids = []
         for service in self.stopped:
             log.debug("starting service: %s..." % service)
@@ -87,4 +100,4 @@ class MachineAgent(Agent):
             log.info("process started: %d." % pid)
             pids.append(pid)
 
-        returnValue(pids)
+        return pids

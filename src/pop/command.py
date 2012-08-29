@@ -1,8 +1,10 @@
 import os
 import sys
+import json
 import shutil
 import signal
 import functools
+import zookeeper
 
 from StringIO import StringIO
 
@@ -138,8 +140,12 @@ class Command(object):
     def cmd_fg(self):
         uuid = local_machine_uuid()
         agent = MachineAgent(self.client, self.path, uuid)
+
+        yield agent.initialize()
+        yield agent.scan()
+
         try:
-            yield agent.run()
+            yield agent.start()
         except ServiceException as exc:
             name = str(exc)
             yield self.cmd_start(name)
@@ -154,7 +160,7 @@ class Command(object):
             machine = str(uuid)
 
         yield service.deploy(machine)
-        log.info("service deployment registered.")
+        log.info("service configured for machine: %s." % machine)
 
     @twisted
     def cmd_dump(self, format):
@@ -178,10 +184,21 @@ class Command(object):
 
         service = yield self.get_service(name)
         log.info("starting service: %r..." % name)
-        yield service.start()
+        state = yield service.start()
 
         log.debug("registering service on machine: %s..." % machine)
-        yield service.register(machine, pid=os.getpid())
+
+        yield self.client.create(
+            self.path + "machines/" + machine + "/" + name,
+            str(os.getpid()),
+            flags=zookeeper.EPHEMERAL,
+            )
+
+        yield self.client.create(
+            service.path + "/state/" + machine,
+            json.dumps(state),
+            flags=zookeeper.EPHEMERAL,
+            )
 
         def stop(signum, frame, service=service):
             from twisted.internet import reactor
@@ -203,18 +220,22 @@ class Command(object):
 
     @twisted
     def cmd_stop(self, name):
-        service = yield self.get_service(name)
         uuid = local_machine_uuid()
         machine = str(uuid)
 
-        state, watch = yield service.get_state(machine, True)
-        pid = state.get('pid')
+        path = self.path + "machines/" + machine + "/" + name
+        log.debug("getting pid for service: %s..." % name)
+        d, watch = yield self.client.get_and_watch(path)
+
+        pid, metadata = yield d
 
         if pid is None:
             log.info("no pid found; service probably not running.")
         else:
-            log.debug("sending SIGHUP to process: %d." % state['pid'])
-            os.kill(state['pid'], signal.SIGHUP)
+            pid = int(pid)
+
+            log.debug("sending SIGHUP to process: %d." % pid)
+            os.kill(pid, signal.SIGHUP)
 
             log.debug("waiting for ephemeral node to disappear...")
             yield watch
@@ -235,6 +256,7 @@ class Command(object):
         if self.path != "/":
             path = self.path.rstrip("/")
             assert path.count("/") == 1
+
             try:
                 yield self.client.create(path, acls=acls)
             except NodeExistsException:
@@ -247,8 +269,7 @@ class Command(object):
             yield create(self.path + "machines", acls=acls)
             yield create(self.path + "services", acls=acls)
         except NodeExistsException as exc:
-            if self.force:
-                raise
+            assert not self.force
 
             raise StateException(
                 "%s!\nIf you're sure, run command again "
