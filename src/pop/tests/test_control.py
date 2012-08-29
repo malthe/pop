@@ -75,22 +75,6 @@ class ControlTestCase(TestCase):
         from pop.control import parse
         return parse(args)
 
-    # def assertContains(self, text, log):
-    #     value = log.getvalue()
-    #     self.assertIn(
-    #         text, value, (
-    #             "%r not contained in output!" +
-    #             "\n\n" +
-    #             "-------------------- >> " +
-    #             "begin captured logging << " +
-    #             "--------------------\n" +
-    #             value.rstrip('\n') + "\n"
-    #             "--------------------- >> " +
-    #             "end captured logging << " +
-    #             "---------------------"
-    #             ) % text
-    #         )
-
 
 class InitializationTest(ControlTestCase):
     @inlineCallbacks
