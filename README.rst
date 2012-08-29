@@ -240,6 +240,29 @@ services that derive from this base class.
      $ pop run plone packages
 
 
+Development
+===========
+
+This section documents the development of pop (not *with*).
+
+Tests
+-----
+
+To run the automated test suite, you need a running ZooKeeper service
+and the `nose <http://nose.readthedocs.org/en/latest/>`_ test runner.
+
+In your ``virtualenv`` environment::
+
+  $ python setup.py nosetests
+
+It's often useful to get a more verbose output::
+
+  $ python setup.py nosetests --verbosity=3
+
+Note that a higher verbosity setting will result in a great amount of
+noise from the nose test runner itself.
+
+
 Acknowledgements and Credits
 ============================
 
