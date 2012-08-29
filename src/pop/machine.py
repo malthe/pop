@@ -82,7 +82,6 @@ class MachineAgent(Agent):
             try:
                 pid = fork()
             except ProcessForked:
-                yield self.client.close()
                 raise ServiceException(service)
 
             log.info("process started: %d." % pid)
