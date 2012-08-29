@@ -168,7 +168,8 @@ class ServiceTest(ControlTestCase):
         yield self.cmd("deploy", "echo")
         yield self.run_services(0.5)
         state = yield self.wait_for_service("echo")
-        yield self.verify_echo_service(state['port'])
+        result = yield self.verify_echo_service(state['port'])
+        self.assertEqual(result, 'Hello world! What a fine day it is. Bye!')
 
     @inlineCallbacks
     def test_twisted_echo_service(self):
@@ -176,7 +177,8 @@ class ServiceTest(ControlTestCase):
         yield self.cmd("deploy", "echo")
         yield self.run_services(0.5)
         state = yield self.wait_for_service("echo")
-        yield self.verify_echo_service(state['port'])
+        result = yield self.verify_echo_service(state['port'])
+        self.assertEqual(result, 'Hello world! What a fine day it is. Bye!')
 
     @inlineCallbacks
     def test_twisted_echo_service_stop_and_start(self):
@@ -185,7 +187,8 @@ class ServiceTest(ControlTestCase):
         yield self.run_services(0.5)
         state = yield self.wait_for_service("echo")
         yield self.cmd("stop", "echo")
-        yield self.verify_echo_service(state['port'], False)
+        result = yield self.verify_echo_service(state['port'])
+        self.assertNotEqual(result, 'Hello world! What a fine day it is. Bye!')
 
     def get_machine_agent(self):
         assert self.path != "/"
@@ -196,30 +199,29 @@ class ServiceTest(ControlTestCase):
         return MachineAgent(client, self.path[:-1], uuid)
 
     @inlineCallbacks
-    def verify_echo_service(self, port, status=True):
+    def verify_echo_service(self, port):
         received = []
-
         from pop.tests.utils import create_echo_client
         factory = create_echo_client(received)
-
         connector = self.reactor.connectTCP('127.0.0.1', port, factory)
 
-        def deferred():
+        def deferred(received=received):
             connector.disconnect()
-            checker = self.assertEqual if status else self.assertNotEqual
-            checker(
-                " ".join(received),
-                'Hello, world! What a fine day it is. Bye-bye!'
-                )
+            returnValue(" ".join(received))
 
         yield deferLater(self.reactor, 1.0, deferred)
 
     @inlineCallbacks
     def run_services(self, time):
+        """Run configured services on local machine agent.
+
+        Services are stopped after the provided time has elapsed.
+        """
+
         from pop.exceptions import ServiceException
 
         try:
-            pids = yield self.start_services(0)
+            pids = yield self.start_services()
             self.pids.extend(pids)
 
         except ServiceException as exc:
@@ -234,7 +236,9 @@ class ServiceTest(ControlTestCase):
             yield deferLater(self.reactor, time, stop)
 
     @inlineCallbacks
-    def start_services(self, attempts, maximum=10, delay=0.1):
+    def start_services(self, attempts=0, maximum=1, delay=0.1):
+        """Scan and start the services not already running."""
+
         yield self.agent.scan()
         pids = self.agent.start_services()
 
@@ -247,6 +251,8 @@ class ServiceTest(ControlTestCase):
 
     @inlineCallbacks
     def wait_for_service(self, name):
+        """Wait for a service to appear and return state."""
+
         client = self.get_client()
 
         from pop.utils import local_machine_uuid

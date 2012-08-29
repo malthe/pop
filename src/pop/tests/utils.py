@@ -7,10 +7,10 @@ def create_echo_client(received):
     disconnected = Deferred()
 
     class EchoClient(LineReceiver):
-        end = "Bye-bye!"
+        end = "Bye!"
 
         def connectionMade(self):
-            self.sendLine("Hello, world!")
+            self.sendLine("Hello world!")
             self.sendLine("What a fine day it is.")
             self.sendLine(self.end)
 
