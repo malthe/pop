@@ -2,6 +2,10 @@ class PopException(Exception):
     """Exception hierarchy base class."""
 
 
+class ProcessForked(PopException):
+    """Raised from the child process."""
+
+
 class ServiceException(PopException):
     """Prompt runtime to start service."""
 

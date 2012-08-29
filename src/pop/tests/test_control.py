@@ -5,14 +5,14 @@ import time
 import signal
 
 from logging import DEBUG
+from logging import INFO
+from logging import getLogger
 
 from twisted.internet.task import deferLater
 
 from twisted.internet.defer import \
      inlineCallbacks, \
-     returnValue, \
-     Deferred, \
-     failure
+     returnValue
 
 from pop.exceptions import StateException
 
@@ -23,7 +23,7 @@ class ControlTestCase(TestCase):
     path = "/"
     host = 'localhost'
     port = 2181
-    # timeout = 1.0
+    timeout = 2.0
 
     def setUp(self):
         super(ControlTestCase, self).setUp()
@@ -51,11 +51,6 @@ class ControlTestCase(TestCase):
             "%s:%d" % (self.host, self.port),
             session_timeout=100
             )
-
-    # def get_command(self, services={}, **kwargs):
-    #     client = self.get_client()
-    #     from pop.command import Command
-    #     return Command(client, self.path, {}, **kwargs)
 
     @inlineCallbacks
     def cmd(self, *args):
@@ -141,8 +136,9 @@ class ServiceTest(ControlTestCase):
              if line.strip()
              ))
 
-        if logged:
+        if logged and getLogger("nose").level <= INFO:
             sys.stderr.write("\n" + logged + "\n")
+
         return super(ServiceTest, self).tearDown()
 
     def get_machine_agent(self):
@@ -161,9 +157,10 @@ class ServiceTest(ControlTestCase):
         yield self.cmd("deploy", "echo")
 
         agent = yield self.run_machine(1.5)
+        state = yield self.wait_for_service("echo")
 
         try:
-            yield self.verify_echo_service("echo")
+            yield self.verify_echo_service(state['port'])
         finally:
             yield agent.close()
 
@@ -174,9 +171,10 @@ class ServiceTest(ControlTestCase):
         yield self.cmd("deploy", "echo")
 
         agent = yield self.run_machine(0.5)
+        state = yield self.wait_for_service("echo")
 
         try:
-            yield self.verify_echo_service("echo")
+            yield self.verify_echo_service(state['port'])
         finally:
             yield agent.close()
 
@@ -187,19 +185,17 @@ class ServiceTest(ControlTestCase):
         yield self.cmd("deploy", "echo")
 
         agent = yield self.run_machine(0.5)
+        state = yield self.wait_for_service("echo")
 
         yield self.cmd("stop", "echo")
 
         try:
-            yield self.verify_echo_service("echo", False)
+            yield self.verify_echo_service(state['port'], False)
         finally:
             yield agent.close()
 
     @inlineCallbacks
-    def verify_echo_service(self, name, status=True):
-        state = yield self.wait_for_service(name)
-        port = state['port']
-
+    def verify_echo_service(self, port, status=True):
         received = []
 
         from pop.tests.utils import create_echo_client

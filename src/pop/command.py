@@ -142,7 +142,6 @@ class Command(object):
             yield agent.run()
         except ServiceException as exc:
             name = str(exc)
-            yield self.client.close()
             yield self.cmd_start(name)
 
     @twisted
@@ -212,7 +211,7 @@ class Command(object):
         pid = state.get('pid')
 
         if pid is None:
-            log.info("service not running.")
+            log.info("no pid found; service probably not running.")
         else:
             log.debug("sending SIGHUP to process: %d." % state['pid'])
             os.kill(state['pid'], signal.SIGHUP)

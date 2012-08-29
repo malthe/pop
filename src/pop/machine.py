@@ -3,7 +3,9 @@ import json
 
 from pop import log
 from pop.agent import Agent
+from pop.exceptions import ProcessForked
 from pop.exceptions import ServiceException
+from pop.process import fork
 
 from twisted.internet.defer import returnValue
 from twisted.internet.defer import inlineCallbacks
@@ -76,10 +78,14 @@ class MachineAgent(Agent):
 
         pids = []
         for service in self.stopped:
-            pid = os.fork()
-            if not pid:
+            log.debug("starting service: %s..." % service)
+            try:
+                pid = fork()
+            except ProcessForked:
+                yield self.client.close()
                 raise ServiceException(service)
 
+            log.info("process started: %d." % pid)
             pids.append(pid)
 
         returnValue(pids)
